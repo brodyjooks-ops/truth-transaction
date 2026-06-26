@@ -1,29 +1,123 @@
-<!doctype html>
-<html><head>
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<link rel="stylesheet" href="style.css">
 <title>Truth Transaction</title>
+
+<style>
+body{
+font-family:Arial,sans-serif;
+background:#f4f4f4;
+margin:0;
+padding:20px;
+}
+.card{
+max-width:500px;
+margin:auto;
+background:white;
+padding:20px;
+border-radius:12px;
+box-shadow:0 2px 10px rgba(0,0,0,.2);
+}
+h1{
+color:#15803d;
+margin-top:0;
+}
+.panel{
+border:1px solid #ccc;
+border-radius:8px;
+padding:15px;
+margin:12px 0;
+font-size:22px;
+}
+button{
+width:100%;
+padding:18px;
+font-size:22px;
+margin-top:12px;
+border:none;
+border-radius:8px;
+background:#15803d;
+color:white;
+}
+button:disabled{
+background:#999;
+}
+#log{
+margin-top:20px;
+font-size:18px;
+}
+</style>
+
 </head>
+
 <body>
+
 <div class="card">
-<div id="status" class="status">Ready</div>
-<div class="hint">Scan Subject</div>
 
-<div id="subjectCard" class="panel hidden">
-<div class="label">Subject</div>
-<div id="subject" class="value"></div>
-<div class="label">Current</div>
-<div id="current">Position 14 (demo)</div>
-<div class="hint">Scan Receiver</div>
+<h1>Truth Transaction</h1>
+
+<div class="panel">
+<b>Subject:</b>
+<span id="subject">---</span>
 </div>
 
-<div id="receiverCard" class="panel hidden">
-<div class="label">Receiver</div>
-<div id="receiver" class="value"></div>
-<button id="commit">Commit</button>
+<div class="panel">
+<b>Receiver:</b>
+<span id="receiver">---</span>
 </div>
 
-<button id="scan">Scan Subject</button>
+<button onclick="scanSubject()">Scan Subject</button>
+
+<button onclick="scanReceiver()">Scan Receiver</button>
+
+<button onclick="commit()">Commit</button>
+
+<div id="log"></div>
+
 </div>
-<script src="app.js"></script>
-</body></html>
+
+<script>
+
+let subject="";
+let receiver="";
+
+function scanSubject(){
+
+subject=prompt("Demo Subject QR","10321");
+
+if(subject)
+document.getElementById("subject").innerHTML=subject;
+
+}
+
+function scanReceiver(){
+
+receiver=prompt("Demo Position QR","Position 14");
+
+if(receiver)
+document.getElementById("receiver").innerHTML=receiver;
+
+}
+
+function commit(){
+
+if(subject==""||receiver==""){
+alert("Scan both QR codes first.");
+return;
+}
+
+const t=new Date();
+
+document.getElementById("log").innerHTML=
+"<h3>Transaction</h3>"+
+"<b>"+subject+"</b> ➜ <b>"+receiver+
+"</b><br><br>"+t.toLocaleString();
+
+}
+
+</script>
+
+</body>
+</html>
