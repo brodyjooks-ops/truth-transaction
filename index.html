@@ -21,10 +21,34 @@ button:disabled{background:#e5e5e5;color:#999}
 #reader{width:100%;margin:12px 0}
 #receipt{display:none;margin-top:16px;padding:16px;border-left:8px solid #15803d;background:#ecfdf3;border-radius:10px;font-size:24px}
 #debug{margin-top:14px;color:#666;font-size:14px;white-space:pre-wrap}
+#welcomeScreen{position:fixed;inset:0;background:#fff;z-index:9999;display:flex;justify-content:center;align-items:center;padding:20px}
+#welcomeBox{max-width:520px;width:100%;font-family:Arial,Helvetica,sans-serif}
+#welcomeBox h1{color:#15803d;font-size:38px;margin:0 0 8px}
+#welcomeBox h2{margin:0 0 18px;font-size:24px}
+#welcomeBox p,#welcomeBox li{font-size:19px;line-height:1.35}
+#welcomeBox ul{padding-left:22px}
+#welcomeBox button{margin-top:18px}
 </style>
 <script src="https://unpkg.com/html5-qrcode"></script>
 </head>
 <body>
+
+<div id="welcomeScreen">
+  <div id="welcomeBox">
+    <h1>Truth Transaction Prototype</h1>
+    <h2>Engineering Proof of Concept</h2>
+    <p>This application demonstrates a QR-based transaction workflow for tracking movable assets between permanent positions.</p>
+    <p><b>Status:</b> Prototype</p>
+    <ul>
+      <li>Demonstration data only</li>
+      <li>Not connected to production systems</li>
+      <li>No production transactions are performed</li>
+      <li>For workflow evaluation only</li>
+    </ul>
+    <button class="primary" onclick="acceptNotice()">Continue</button>
+  </div>
+</div>
+
 <main>
 <div class="card">
 <h1>Truth Transaction</h1>
@@ -55,7 +79,6 @@ let scanner = null;
 let running = false;
 let receiptCounter = Number(localStorage.getItem("receiptCounter") || "0");
 
-// Position table is the source of truth.
 let positions = JSON.parse(localStorage.getItem("positions") || JSON.stringify({
   "Position 14": "10321",
   "Position 15": "10322",
@@ -67,10 +90,18 @@ let positions = JSON.parse(localStorage.getItem("positions") || JSON.stringify({
 
 const $ = id => document.getElementById(id);
 
-function savePositions(){
-  localStorage.setItem("positions", JSON.stringify(positions));
+function acceptNotice(){
+  localStorage.setItem("acceptedNotice_v1","yes");
+  $("welcomeScreen").style.display = "none";
 }
 
+function checkNotice(){
+  if(localStorage.getItem("acceptedNotice_v1") === "yes"){
+    $("welcomeScreen").style.display = "none";
+  }
+}
+
+function savePositions(){localStorage.setItem("positions", JSON.stringify(positions));}
 function debug(msg){ $("debug").textContent = msg; }
 
 function isReceiver(v){
@@ -94,26 +125,20 @@ function occupantAt(receiver){
 
 function currentPositionOf(subject){
   for(const [pos, occ] of Object.entries(positions)){
-    if(occ === subject && pos.toLowerCase().includes("position")){
-      return pos;
-    }
+    if(occ === subject && pos.toLowerCase().includes("position")) return pos;
   }
   return "Unknown";
 }
 
 function stopScan(){
-  if(scanner && running){
-    scanner.stop().then(()=>scanner.clear()).catch(()=>{});
-  }
+  if(scanner && running){scanner.stop().then(()=>scanner.clear()).catch(()=>{});}
   scanner = null;
   running = false;
 }
 
 function resetAll(clearReceipt=true){
   stopScan();
-  stage = "subject";
-  subjectValue = "";
-  receiverValue = "";
+  stage = "subject"; subjectValue = ""; receiverValue = "";
   $("status").textContent = "Ready";
   $("instruction").textContent = "Scan Subject";
   $("subject").textContent = "---";
@@ -122,87 +147,62 @@ function resetAll(clearReceipt=true){
   $("scanSubjectBtn").disabled = false;
   $("scanReceiverBtn").disabled = true;
   $("commitBtn").disabled = true;
-  if(clearReceipt){
-    $("receipt").style.display = "none";
-    $("receipt").innerHTML = "";
-  }
+  if(clearReceipt){$("receipt").style.display = "none"; $("receipt").innerHTML = "";}
   debug("Clipboard cleared.");
 }
 
 function subjectLoaded(v){
-  // New Unique always clears current transaction first.
   subjectValue = String(v).trim();
   receiverValue = "";
   stage = "receiver";
-
   $("status").textContent = "Subject Loaded";
   $("instruction").textContent = "Scan Receiver";
   $("subject").textContent = subjectValue;
   $("current").textContent = "---";
   $("receiver").textContent = "---";
-
   $("scanSubjectBtn").disabled = false;
   $("scanReceiverBtn").disabled = false;
   $("commitBtn").disabled = true;
   $("receipt").style.display = "none";
   $("receipt").innerHTML = "";
-
   debug("Clipboard = " + subjectValue);
 }
 
 function lookupReceiver(v){
   const rec = canonicalReceiver(v);
-  stage = "subject";
-  subjectValue = "";
-  receiverValue = "";
-
+  stage = "subject"; subjectValue = ""; receiverValue = "";
   $("status").textContent = "Lookup";
   $("instruction").textContent = "Receiver Lookup";
   $("subject").textContent = "---";
   $("receiver").textContent = rec;
   $("current").textContent = occupantAt(rec);
-
   $("scanSubjectBtn").disabled = false;
   $("scanReceiverBtn").disabled = true;
   $("commitBtn").disabled = true;
-
   debug("Lookup only. Clipboard empty.");
 }
 
 function receiverLoaded(v){
   receiverValue = canonicalReceiver(v);
   stage = "commit";
-
   $("status").textContent = "Review";
   $("instruction").textContent = "Commit?";
   $("receiver").textContent = receiverValue;
   $("current").textContent = "Receiver contains: " + occupantAt(receiverValue);
-
   $("scanReceiverBtn").disabled = false;
   $("commitBtn").disabled = false;
-
   debug("Ready to commit: " + subjectValue + " -> " + receiverValue);
 }
 
 function handleScan(raw){
   const value = String(raw).trim();
   stopScan();
-
   if(stage === "subject"){
-    if(isReceiver(value)){
-      lookupReceiver(value);
-      return;
-    }
-    subjectLoaded(value);
-    return;
+    if(isReceiver(value)){lookupReceiver(value);return;}
+    subjectLoaded(value);return;
   }
-
   if(stage === "receiver" || stage === "commit"){
-    if(isReceiver(value)){
-      receiverLoaded(value);
-      return;
-    }
-    // New Unique always clears and replaces clipboard.
+    if(isReceiver(value)){receiverLoaded(value);return;}
     subjectLoaded(value);
   }
 }
@@ -216,15 +216,13 @@ async function startScan(){
   scanner = new Html5Qrcode("reader");
   running = true;
   debug("Camera starting...");
-
   scanner.start(
     { facingMode: "environment" },
     { fps: 10, qrbox: 260 },
     decodedText => handleScan(decodedText),
     error => {}
-  ).then(()=>{
-    debug("Camera running. Point at QR.");
-  }).catch(err=>{
+  ).then(()=>debug("Camera running. Point at QR."))
+   .catch(err=>{
     running = false;
     debug("Camera error: " + err);
     alert("Camera error: " + err);
@@ -236,19 +234,13 @@ function commitTransaction(){
     alert("Scan Subject and Receiver first.");
     return;
   }
-
   const oldPosition = currentPositionOf(subjectValue);
-
-  if(oldPosition !== "Unknown"){
-    positions[oldPosition] = "Empty";
-  }
-
+  if(oldPosition !== "Unknown") positions[oldPosition] = "Empty";
   positions[receiverValue] = subjectValue;
   savePositions();
 
   receiptCounter += 1;
   localStorage.setItem("receiptCounter", String(receiptCounter));
-
   const now = new Date().toLocaleString();
 
   $("receipt").style.display = "block";
@@ -259,18 +251,12 @@ function commitTransaction(){
     "Receipt #" + String(receiptCounter).padStart(5,"0");
 
   debug("Committed. Clipboard cleared.");
-
-  // Clear clipboard, keep receipt visible.
-  stage = "subject";
-  subjectValue = "";
-  receiverValue = "";
-
+  stage = "subject"; subjectValue = ""; receiverValue = "";
   $("status").textContent = "Ready";
   $("instruction").textContent = "Scan Subject";
   $("subject").textContent = "---";
   $("current").textContent = "---";
   $("receiver").textContent = "---";
-
   $("scanSubjectBtn").disabled = false;
   $("scanReceiverBtn").disabled = true;
   $("commitBtn").disabled = true;
@@ -282,6 +268,7 @@ $("commitBtn").onclick = commitTransaction;
 $("resetBtn").onclick = () => resetAll(true);
 
 resetAll(true);
+checkNotice();
 </script>
 </body>
 </html>
