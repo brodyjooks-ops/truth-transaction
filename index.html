@@ -1,123 +1,55 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Truth Transaction</title>
-
+<title>Truth Transaction QR</title>
 <style>
-body{
-font-family:Arial,sans-serif;
-background:#f4f4f4;
-margin:0;
-padding:20px;
-}
-.card{
-max-width:500px;
-margin:auto;
-background:white;
-padding:20px;
-border-radius:12px;
-box-shadow:0 2px 10px rgba(0,0,0,.2);
-}
-h1{
-color:#15803d;
-margin-top:0;
-}
-.panel{
-border:1px solid #ccc;
-border-radius:8px;
-padding:15px;
-margin:12px 0;
-font-size:22px;
-}
-button{
-width:100%;
-padding:18px;
-font-size:22px;
-margin-top:12px;
-border:none;
-border-radius:8px;
-background:#15803d;
-color:white;
-}
-button:disabled{
-background:#999;
-}
-#log{
-margin-top:20px;
-font-size:18px;
-}
+body{font-family:Arial,sans-serif;background:#f4f4f4;margin:0;padding:18px}
+.card{max-width:520px;margin:auto;background:white;padding:18px;border-radius:12px;box-shadow:0 2px 10px rgba(0,0,0,.2)}
+h1{color:#15803d;font-size:38px;margin:0 0 12px}
+.status{font-size:30px;font-weight:bold;margin:8px 0}
+.panel{border:1px solid #ccc;border-radius:8px;padding:14px;margin:12px 0;font-size:22px}
+button{width:100%;padding:18px;font-size:22px;margin-top:12px;border:none;border-radius:8px;background:#15803d;color:white}
+button.gray{background:#ddd;color:#111}
+button.red{background:#b91c1c}
+#reader{width:100%;margin-top:10px}
+#commitBox{display:none}
+#receipt{font-size:22px;margin-top:16px}
+.small{font-size:14px;color:#666;margin-top:14px}
 </style>
-
+<script src="https://unpkg.com/html5-qrcode"></script>
 </head>
-
 <body>
-
 <div class="card">
-
 <h1>Truth Transaction</h1>
-
-<div class="panel">
-<b>Subject:</b>
-<span id="subject">---</span>
-</div>
-
-<div class="panel">
-<b>Receiver:</b>
-<span id="receiver">---</span>
-</div>
-
-<button onclick="scanSubject()">Scan Subject</button>
-
-<button onclick="scanReceiver()">Scan Receiver</button>
-
+<div id="status" class="status">Ready</div>
+<div id="instruction">Scan Subject</div>
+<div class="panel"><b>Subject:</b> <span id="subject">---</span></div>
+<div class="panel"><b>Current:</b> <span id="current">---</span></div>
+<div class="panel"><b>Receiver:</b> <span id="receiver">---</span></div>
+<div id="reader"></div>
+<button id="scanBtn" onclick="startScan()">Scan Subject</button>
+<button class="gray" onclick="manualScan()">Manual Scan</button>
+<button class="gray" onclick="stopScan()">Stop Camera</button>
+<div id="commitBox">
 <button onclick="commit()">Commit</button>
-
-<div id="log"></div>
-
+<button class="red" onclick="reset()">Cancel</button>
 </div>
-
+<div id="receipt"></div>
+<div class="small">Demo rule: values starting with P or containing Position are receivers. Other values are subjects.</div>
+</div>
 <script>
-
-let subject="";
-let receiver="";
-
-function scanSubject(){
-
-subject=prompt("Demo Subject QR","10321");
-
-if(subject)
-document.getElementById("subject").innerHTML=subject;
-
-}
-
-function scanReceiver(){
-
-receiver=prompt("Demo Position QR","Position 14");
-
-if(receiver)
-document.getElementById("receiver").innerHTML=receiver;
-
-}
-
-function commit(){
-
-if(subject==""||receiver==""){
-alert("Scan both QR codes first.");
-return;
-}
-
-const t=new Date();
-
-document.getElementById("log").innerHTML=
-"<h3>Transaction</h3>"+
-"<b>"+subject+"</b> ➜ <b>"+receiver+
-"</b><br><br>"+t.toLocaleString();
-
-}
-
+let stage="subject", subject="", receiver="", scanner=null, running=false;
+let truth={"10321":"Position 14","10322":"Position 15","10323":"Position 16","Position 14":"10320","Position 15":"Empty","Position 16":"Empty","P14":"10320","P15":"Empty","P16":"Empty"};
+function isReceiver(v){v=String(v).trim().toLowerCase();return v.startsWith("p")||v.includes("position");}
+function reset(){stopScan();stage="subject";subject="";receiver="";status.innerText="Ready";instruction.innerText="Scan Subject";document.getElementById("subject").innerText="---";current.innerText="---";document.getElementById("receiver").innerText="---";scanBtn.innerText="Scan Subject";scanBtn.style.display="block";commitBox.style.display="none";receipt.innerHTML="";}
+function handleScan(value){value=String(value).trim();stopScan();if(stage==="subject"){if(isReceiver(value)){status.innerText="Lookup";instruction.innerText="Receiver current truth";document.getElementById("receiver").innerText=value;current.innerText=truth[value]||"Unknown";return;}subject=value;stage="receiver";status.innerText="Subject Loaded";instruction.innerText="Scan Receiver";document.getElementById("subject").innerText=subject;current.innerText=truth[subject]||"Unknown";scanBtn.innerText="Scan Receiver";return;}if(stage==="receiver"){if(!isReceiver(value)){alert("Expected Receiver. Scanned: "+value);return;}receiver=value;stage="commit";status.innerText="Review";instruction.innerText="Commit?";document.getElementById("receiver").innerText=receiver;current.innerText="Receiver currently: "+(truth[receiver]||"Unknown");scanBtn.style.display="none";commitBox.style.display="block";}}
+function startScan(){if(typeof Html5Qrcode==="undefined"){alert("QR library did not load. Use HTTPS page and internet connection.");return;}stopScan();scanner=new Html5Qrcode("reader");running=true;scanner.start({facingMode:"environment"},{fps:10,qrbox:250},decodedText=>handleScan(decodedText),()=>{}).catch(err=>{running=false;alert("Camera error: "+err);});}
+function stopScan(){if(scanner&&running){scanner.stop().then(()=>scanner.clear()).catch(()=>{});}scanner=null;running=false;}
+function manualScan(){let v=prompt(stage==="subject"?"Subject or Receiver":"Receiver",stage==="subject"?"10321":"Position 15");if(v)handleScan(v);}
+function commit(){if(!subject||!receiver){alert("Missing scan.");return;}truth[subject]=receiver;truth[receiver]=subject;let t=new Date().toLocaleString();receipt.innerHTML="<h2>✓ Accepted</h2><b>"+subject+" → "+receiver+"</b><br>"+t;setTimeout(reset,4000);}
+reset();
 </script>
-
 </body>
 </html>
