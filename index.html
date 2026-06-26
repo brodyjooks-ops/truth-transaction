@@ -1,65 +1,320 @@
-<!DOCTYPE html>
-<html>
+<!doctype html>
+<html lang="en">
 <head>
-<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <title>Truth Transaction</title>
-<link rel="stylesheet" href="style.css">
+<style>
+*{box-sizing:border-box}
+body{
+  margin:0;
+  font-family:Arial,Helvetica,sans-serif;
+  background:#f2f2f2;
+  color:#111;
+}
+main{
+  max-width:520px;
+  margin:0 auto;
+  padding:20px 18px 40px;
+}
+.card{
+  background:#fff;
+  border-radius:16px;
+  padding:20px;
+  box-shadow:0 2px 12px rgba(0,0,0,.18);
+}
+h1{
+  margin:0 0 10px;
+  color:#15803d;
+  font-size:44px;
+  line-height:1.05;
+}
+#status{
+  font-size:36px;
+  font-weight:800;
+  margin:12px 0 4px;
+}
+#instruction{
+  font-size:26px;
+  margin:0 0 20px;
+}
+.panel{
+  border:1px solid #d0d0d0;
+  border-radius:12px;
+  padding:16px;
+  margin:14px 0;
+  background:#fff;
+}
+.label{
+  font-size:18px;
+  color:#555;
+  font-weight:700;
+}
+.value{
+  font-size:34px;
+  font-weight:800;
+  margin-top:6px;
+  min-height:40px;
+}
+button{
+  width:100%;
+  border:none;
+  border-radius:12px;
+  padding:18px;
+  margin:10px 0;
+  font-size:26px;
+  font-weight:800;
+}
+.primary{background:#15803d;color:#fff}
+.secondary{background:#ddd;color:#111}
+.danger{background:#b91c1c;color:#fff}
+button:disabled{background:#e5e5e5;color:#999}
+#reader{
+  width:100%;
+  margin:12px 0;
+}
+#receipt{
+  display:none;
+  margin-top:16px;
+  padding:16px;
+  border-left:8px solid #15803d;
+  background:#ecfdf3;
+  border-radius:10px;
+  font-size:24px;
+}
+#debug{
+  margin-top:14px;
+  color:#666;
+  font-size:14px;
+  white-space:pre-wrap;
+}
+.hidden{display:none}
+</style>
+
+<script src="https://unpkg.com/html5-qrcode"></script>
 </head>
 
 <body>
-
+<main>
 <div class="card">
+  <h1>Truth Transaction</h1>
 
-<h1>Truth Transaction</h1>
+  <div id="status">Ready</div>
+  <div id="instruction">Scan Subject</div>
 
-<div id="status" class="status">
-Ready
-</div>
-
-<div class="hint">
-Scan Subject
-</div>
-
-<div class="panel">
+  <div class="panel">
     <div class="label">Subject</div>
     <div id="subject" class="value">---</div>
-</div>
+  </div>
 
-<div class="panel">
-    <div class="label">Current Position</div>
+  <div class="panel">
+    <div class="label">Current</div>
     <div id="current" class="value">---</div>
-</div>
+  </div>
 
-<div class="panel">
+  <div class="panel">
     <div class="label">Receiver</div>
     <div id="receiver" class="value">---</div>
+  </div>
+
+  <div id="reader"></div>
+
+  <button id="scanSubjectBtn" class="primary">Scan Subject</button>
+  <button id="scanReceiverBtn" class="primary" disabled>Scan Receiver</button>
+  <button id="commitBtn" class="primary" disabled>Commit</button>
+  <button id="resetBtn" class="secondary">Reset</button>
+
+  <div id="receipt"></div>
+  <div id="debug">Ready.</div>
 </div>
+</main>
 
-<button id="scanSubject">
-Scan Subject
-</button>
+<script>
+let stage = "subject";
+let subjectValue = "";
+let receiverValue = "";
+let scanner = null;
+let running = false;
+let receiptCounter = Number(localStorage.getItem("receiptCounter") || "0");
 
-<button id="scanReceiver" disabled>
-Scan Receiver
-</button>
+const truth = {
+  "10321": "Position 14",
+  "10322": "Position 15",
+  "10323": "Position 16",
+  "Position 14": "10321",
+  "Position 15": "Empty",
+  "Position 16": "Empty",
+  "P14": "10321",
+  "P15": "Empty",
+  "P16": "Empty"
+};
 
-<button id="commit" disabled>
-Commit
-</button>
+const $ = id => document.getElementById(id);
 
-<div id="receipt" class="receipt hidden">
+function debug(msg){ $("debug").textContent = msg; }
 
-<h2>Transaction Complete</h2>
+function isReceiver(v){
+  const x = String(v).trim().toLowerCase();
+  return x.startsWith("p") || x.includes("position");
+}
 
-<div id="result"></div>
+function stopScan(){
+  if(scanner && running){
+    scanner.stop().then(()=>scanner.clear()).catch(()=>{});
+  }
+  scanner = null;
+  running = false;
+}
 
-<div id="time"></div>
+function resetAll(){
+  stopScan();
+  stage = "subject";
+  subjectValue = "";
+  receiverValue = "";
+  $("status").textContent = "Ready";
+  $("instruction").textContent = "Scan Subject";
+  $("subject").textContent = "---";
+  $("current").textContent = "---";
+  $("receiver").textContent = "---";
+  $("scanSubjectBtn").disabled = false;
+  $("scanReceiverBtn").disabled = true;
+  $("commitBtn").disabled = true;
+  $("receipt").style.display = "none";
+  debug("Ready.");
+}
 
-</div>
+function subjectLoaded(v){
+  // Unique scan always clears old clipboard and loads new subject.
+  subjectValue = v;
+  receiverValue = "";
+  stage = "receiver";
 
-</div>
+  $("status").textContent = "Subject Loaded";
+  $("instruction").textContent = "Scan Receiver";
+  $("subject").textContent = subjectValue;
+  $("current").textContent = truth[subjectValue] || "Unknown";
+  $("receiver").textContent = "---";
 
-<script src="app.js"></script>
+  $("scanSubjectBtn").disabled = false;
+  $("scanReceiverBtn").disabled = false;
+  $("commitBtn").disabled = true;
+  $("receipt").style.display = "none";
 
+  debug("Clipboard = " + subjectValue);
+}
+
+function receiverLoaded(v){
+  receiverValue = v;
+  stage = "commit";
+
+  $("status").textContent = "Review";
+  $("instruction").textContent = "Commit?";
+  $("receiver").textContent = receiverValue;
+  $("current").textContent = "Receiver contains: " + (truth[receiverValue] || "Unknown");
+
+  $("scanReceiverBtn").disabled = false;
+  $("commitBtn").disabled = false;
+
+  debug("Ready to commit: " + subjectValue + " -> " + receiverValue);
+}
+
+function handleScan(raw){
+  const value = String(raw).trim();
+  stopScan();
+
+  if(stage === "subject"){
+    if(isReceiver(value)){
+      // Receiver scanned first = query only.
+      $("status").textContent = "Lookup";
+      $("instruction").textContent = "Scan Subject";
+      $("receiver").textContent = value;
+      $("current").textContent = truth[value] || "Unknown";
+      debug("Receiver lookup: " + value);
+      return;
+    }
+    subjectLoaded(value);
+    return;
+  }
+
+  if(stage === "receiver" || stage === "commit"){
+    if(!isReceiver(value)){
+      // Scanning a new unique always clears/reloads clipboard.
+      subjectLoaded(value);
+      return;
+    }
+    receiverLoaded(value);
+  }
+}
+
+async function startScan(){
+  if(typeof Html5Qrcode === "undefined"){
+    alert("QR scanner library did not load. Check internet connection and refresh.");
+    return;
+  }
+
+  stopScan();
+
+  scanner = new Html5Qrcode("reader");
+  running = true;
+  debug("Camera starting...");
+
+  scanner.start(
+    { facingMode: "environment" },
+    { fps: 10, qrbox: 260 },
+    decodedText => handleScan(decodedText),
+    error => {}
+  ).then(()=>{
+    debug("Camera running. Point at QR.");
+  }).catch(err=>{
+    running = false;
+    debug("Camera error: " + err);
+    alert("Camera error: " + err);
+  });
+}
+
+function commitTransaction(){
+  if(!subjectValue || !receiverValue){
+    alert("Scan Subject and Receiver first.");
+    return;
+  }
+
+  receiptCounter += 1;
+  localStorage.setItem("receiptCounter", String(receiptCounter));
+
+  const now = new Date().toLocaleString();
+
+  truth[subjectValue] = receiverValue;
+  truth[receiverValue] = subjectValue;
+
+  $("receipt").style.display = "block";
+  $("receipt").innerHTML =
+    "<b>✓ Transaction Accepted</b><br><br>" +
+    subjectValue + " → " + receiverValue + "<br><br>" +
+    now + "<br>" +
+    "Receipt #" + String(receiptCounter).padStart(5,"0");
+
+  debug("Committed. Clipboard cleared.");
+  subjectValue = "";
+  receiverValue = "";
+  stage = "subject";
+
+  $("status").textContent = "Ready";
+  $("instruction").textContent = "Scan Subject";
+  $("subject").textContent = "---";
+  $("current").textContent = "---";
+  $("receiver").textContent = "---";
+
+  $("scanSubjectBtn").disabled = false;
+  $("scanReceiverBtn").disabled = true;
+  $("commitBtn").disabled = true;
+}
+
+$("scanSubjectBtn").onclick = () => { stage = "subject"; startScan(); };
+$("scanReceiverBtn").onclick = () => { stage = "receiver"; startScan(); };
+$("commitBtn").onclick = commitTransaction;
+$("resetBtn").onclick = resetAll;
+
+resetAll();
+</script>
 </body>
 </html>
